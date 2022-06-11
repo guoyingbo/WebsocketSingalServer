@@ -1,7 +1,7 @@
 #pragma once
 #include "websocket_server.h"
 #include <map>
-#include "../jsoncpp/json/value.h"
+#include <json/value.h>
 #include <mutex>
 
 
