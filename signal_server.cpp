@@ -1,7 +1,7 @@
 #include "signal_server.h"
 #include <map>
 
-#include "../jsoncpp/json/reader.h"
+#include <json/reader.h>
 
 namespace {
   const char kSignal[] = "signal";
