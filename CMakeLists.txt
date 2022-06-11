@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 2.8)
 
-project(WebsocketSignalServer)
+project(wsSignalServer)
 
 # 并将名称保存到 DIR_SRCS 变量
 aux_source_directory(. DIR_SRCS)
