@@ -43,14 +43,14 @@ void SignalServer::OnReceive(connection_hdl hdl, const std::string& message)
 
 void SignalServer::OnClose(connection_hdl hdl)
 {
-  std::unique_lock<std::mutex> lock(m_mutex_peers);
+  std::lock_guard<std::mutex> lock(m_mutex_peers);
   if (m_map_peers.count(hdl))
   {
     Peer p = m_map_peers[hdl];
     Json::Value jreturn;
     jreturn[kSignal] = kSignOut;
     jreturn[kID] = p.id;
-    printf("--disconnect:%d %s\n", p.id, p.name.data());
+    std::cout <<"--disconnect:"<<p.id<<" "<< p.name<<"\n";
     m_map_peers.erase(hdl);
     this->Broadcast(jreturn.toStyledString());
     PrintPeers();
@@ -61,12 +61,28 @@ void SignalServer::OnClose(connection_hdl hdl)
 
 void SignalServer::PrintPeers()
 {
-  std::cout << "--------peer list----------\n";
+  char same1 = '+';
+  char same2 = '+';
+  char tbuffer[128];
+  auto t = std::time(nullptr);
+  std::strftime(tbuffer,sizeof(tbuffer),"%Y/%m/%d %H:%M:%S\n",
+          std::localtime(&t));
+  std::cout << "------------------"<<tbuffer;
   for (auto p : m_map_peers)
   {
-    std::cout << p.second.id << ":" << p.second.name << std::endl;
+    bool have = true;
+    if (!m_connections.count(p.first))
+    {
+      have = false;
+      same1 = '-';
+    }
+
+    std::cout << p.second.id << ":" << p.second.name << " "<<(have?"+":"-")<< std::endl;
   }
-  std::cout << "---------------------------\n\n";
+  if (m_connections.size() != m_map_peers.size())
+    same2 = '-';
+  std::cout << "------------------------- "<<same2<<same1<<"\n\n";
+  std::cout.flush();
 }
 
 void SignalServer::Broadcast(const std::string& text)
@@ -101,25 +117,35 @@ void SignalServer::ProcessSignIn(connection_hdl hdl, Json::Value& value)
      jreturn["request"] = "sign_in";
      jreturn["status"] = "ok";
      Json::Value peers;
-     for (auto &pa : m_map_peers)
-     {
-       Json::Value pv;
-       pv["name"] = pa.second.name;
-       pv["id"] = pa.second.id;
-       peers.append(pv);
-     }
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex_peers);
+        for (auto &pa : m_map_peers)
+        {
+            Json::Value pv;
+            pv["name"] = pa.second.name;
+            pv["id"] = pa.second.id;
+            peers.append(pv);
+        }
+        m_map_peers[hdl] = p;
+    }
+
      jreturn["peers"] = peers;
      this->Send(jreturn.toStyledString(), hdl);
 
-     m_map_peers[hdl] = p;
-     printf("--sign in:%d %s\n", p.id,p.name.data());
+     //printf("--sign in:%d %s\n", p.id,p.name.data());
+     std::cout << "--sign in:" << p.id<<" "<<p.name<<"\n";
      PrintPeers();
 }
 
 void SignalServer::ProcessSignOut(connection_hdl hdl, Json::Value& value)
 {
   int id = value[kID].asUInt();
-  m_map_peers.erase(hdl);
+
+  {
+      std::lock_guard<std::mutex> lock(m_mutex_peers);
+      m_map_peers.erase(hdl);
+  }
 
   Json::Value jreturn;
   jreturn[kSignal] = "return";
@@ -131,7 +157,8 @@ void SignalServer::ProcessSignOut(connection_hdl hdl, Json::Value& value)
   jreturn[kID] = id;
 
   this->Broadcast(jreturn.toStyledString());
-  printf("--sign out:%d\n", id);
+//  printf("--sign out:%d\n", id);
+  std::cout << "--sign out:"<<id<<"\n";
   PrintPeers();
 }
 
@@ -147,7 +174,7 @@ void SignalServer::ProcessMessage(connection_hdl hdl, Json::Value& value)
 
 bool SignalServer::IsExist(int id)
 {
-  std::unique_lock<std::mutex> lock(m_mutex_peers);
+  std::lock_guard<std::mutex> lock(m_mutex_peers);
   for (auto& p : m_map_peers)
   {
     if (p.second.id == id)
@@ -162,7 +189,7 @@ bool SignalServer::IsExist(int id)
 
 connection_hdl SignalServer::GetConnectionFromID(int id)
 {
-  std::unique_lock<std::mutex> lock(m_mutex_peers);
+  std::lock_guard<std::mutex> lock(m_mutex_peers);
   for (auto& p : m_map_peers)
   {
     if (p.second.id == id)

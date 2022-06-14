@@ -57,8 +57,8 @@ public:
 
   void Broadcast(const std::string& text);
   void Broadcast(void* data, int len);
-  virtual void OnReceive(connection_hdl hdl, const std::string& message);
-  virtual void OnClose(connection_hdl) {}
+  virtual void OnReceive(connection_hdl hdl, const std::string& message) = 0;
+  virtual void OnClose(connection_hdl) = 0;
 protected:
   void run(uint16_t port);
 
@@ -68,10 +68,14 @@ protected:
 
   void on_message(connection_hdl hdl, server::message_ptr msg);
 
-  void process_messages();
+  void on_pong_timeout(connection_hdl hdl, std::string s);
+
+  [[noreturn]] void process_messages();
+
+  [[noreturn]] void loop_ping();
   server m_server;
-  
-private:
+
+protected:
   typedef std::set<connection_hdl, std::owner_less<connection_hdl> > con_list;
 
  

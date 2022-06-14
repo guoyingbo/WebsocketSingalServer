@@ -1,5 +1,7 @@
 #include "websocket_server.h"
 
+#include <utility>
+
 WebsocketServer::WebsocketServer()
 {
   // Initialize Asio Transport
@@ -11,6 +13,8 @@ WebsocketServer::WebsocketServer()
   m_server.set_open_handler(bind(&WebsocketServer::on_open, this, ::_1));
   m_server.set_close_handler(bind(&WebsocketServer::on_close, this, ::_1));
   m_server.set_message_handler(bind(&WebsocketServer::on_message, this, ::_1, ::_2));
+  m_server.set_pong_timeout(3000);
+  m_server.set_pong_timeout_handler(bind(&WebsocketServer::on_pong_timeout, this,::_1,::_2));
 }
 
 void WebsocketServer::run(uint16_t port)
@@ -34,7 +38,7 @@ void WebsocketServer::on_open(connection_hdl hdl)
 {
   {
     lock_guard<mutex> guard(m_action_lock);
-    m_actions.push(action(SUBSCRIBE, hdl));
+    m_actions.push(action(SUBSCRIBE, std::move(hdl)));
   }
   m_action_cond.notify_one();
 }
@@ -43,7 +47,7 @@ void WebsocketServer::on_close(connection_hdl hdl)
 {
   {
     lock_guard<mutex> guard(m_action_lock);
-    m_actions.push(action(UNSUBSCRIBE, hdl));
+    m_actions.push(action(UNSUBSCRIBE, std::move(hdl)));
   }
   m_action_cond.notify_one();
 }
@@ -53,15 +57,15 @@ void WebsocketServer::on_message(connection_hdl hdl, server::message_ptr msg)
   // queue message up for sending by processing thread
   {
     lock_guard<mutex> guard(m_action_lock);
-    m_actions.push(action(MESSAGE, hdl, msg));
+    m_actions.push(action(MESSAGE, std::move(hdl), std::move(msg)));
  //   std::cout << "-->RECV:" << msg->get_payload() << "\n";
   }
   m_action_cond.notify_one();
 }
 
-void WebsocketServer::process_messages()
+[[noreturn]] void WebsocketServer::process_messages()
 {
-  while (1) 
+  while (true)
   {
     unique_lock<mutex> lock(m_action_lock);
 
@@ -106,12 +110,13 @@ void WebsocketServer::Listen(int port)
   try
   {
     // Start a thread to run the processing loop
-    thread t(bind(&WebsocketServer::process_messages, this));
-
+    thread t1(bind(&WebsocketServer::process_messages, this));
+    thread t2(bind(&WebsocketServer::loop_ping, this));
     // Run the asio loop with the main thread
     run(port);
 
-    t.join();
+    t2.join();
+    t1.join();
 
   }
   catch (websocketpp::exception const & e)
@@ -124,7 +129,7 @@ void WebsocketServer::Listen(int port)
 bool WebsocketServer::Send(void * data, int len, connection_hdl hdl)
 {
 	try {
-	 m_server.send(hdl, data, len, websocketpp::frame::opcode::BINARY);
+	 m_server.send(std::move(hdl), data, len, websocketpp::frame::opcode::BINARY);
 	 return true;
 	}
 	catch (std::exception& e)
@@ -138,7 +143,7 @@ bool WebsocketServer::Send(const std::string& text, connection_hdl hdl)
 {
 	try
 	{
-		m_server.send(hdl, text, websocketpp::frame::opcode::TEXT);
+		m_server.send(std::move(hdl), text, websocketpp::frame::opcode::TEXT);
  //   std::cout << "<--SEND:" << text << "\n";
 		return true;
 	}
@@ -151,7 +156,8 @@ bool WebsocketServer::Send(const std::string& text, connection_hdl hdl)
 
 void WebsocketServer::Broadcast(const std::string& text)
 {
-  for (auto hdl: m_connections)
+  lock_guard<mutex> guard(m_connection_lock);
+  for (const auto& hdl: m_connections)
   {
     Send(text, hdl);
   }
@@ -159,14 +165,34 @@ void WebsocketServer::Broadcast(const std::string& text)
 
 void WebsocketServer::Broadcast(void* data, int len)
 {
-  for (auto hdl : m_connections)
+  lock_guard<mutex> guard(m_connection_lock);
+  for (const auto& hdl : m_connections)
   {
     Send(data,len, hdl);
   }
 }
 
-void WebsocketServer::OnReceive(connection_hdl hdl, const std::string& message)
-{
+[[noreturn]] void WebsocketServer::loop_ping() {
+  while (true)
+  {
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    lock_guard<mutex> guard(m_connection_lock);
+    for (const auto& hdl : m_connections)
+    {
+      std::error_code er;
+      m_server.ping(hdl,"",er);
+      if (er)
+      {
+        std::cout << er.message() << std::endl;
+      }
+    }
+  }
 
+}
+
+void WebsocketServer::on_pong_timeout(connection_hdl hdl, std::string s) {
+  std::error_code er;
+  m_server.close(hdl,websocketpp::close::status::normal,"pong timeout",er);
+  std::cout << "pong timeout \n";
 }
 
