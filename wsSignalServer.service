@@ -1,0 +1,11 @@
+[Unit]
+Description=Websocket Signal Server
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/wsSignalServer -c service
+ExecStop=/usr/bin/wsSignalServer -c stop
+
+[Install]
+WantedBy=multi-user.target
+Alias=wsSignalServer.service

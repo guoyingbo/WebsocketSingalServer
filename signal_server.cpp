@@ -1,12 +1,12 @@
-#include "signal_server.h"
+﻿#include "signal_server.h"
 #include <map>
-
+#include <boost/log/trivial.hpp>
 #include <json/reader.h>
 
 namespace {
   const char kSignal[] = "signal";
   const char kName[] = "name";
-  const char kAdded[] = "added";
+  const char kMessage[] = "message";
   const char kSignIn[] = "sign_in";
   const char kSignOut[] = "sign_out";
   const char kID[] = "id";
@@ -22,22 +22,24 @@ void SignalServer::OnReceive(connection_hdl hdl, const std::string& message)
 {
   Json::Reader reader;
   Json::Value jinput;
-  reader.parse(message, jinput);
+  if (reader.parse(message, jinput)){
+    std::string type = jinput[kSignal].asString();
 
-  std::string type = jinput[kSignal].asString();
+    if (type == kSignIn)
+    {
+      ProcessSignIn(hdl, jinput);
+    }
+    else if(type == kSignOut)
+    {
+      ProcessSignOut(hdl, jinput);
+    }
+    else if (type == kMessage)
+    {
+      ProcessMessage(hdl, jinput);
+    }
+  }
 
-  if (type == kSignIn)
-  {
-    ProcessSignIn(hdl, jinput);
-  }
-  else if(type == kSignOut)
-  {
-    ProcessSignOut(hdl, jinput);
-  }
-  else if (type == "message")
-  {
-    ProcessMessage(hdl, jinput);
-  }
+
 
 }
 
@@ -50,7 +52,7 @@ void SignalServer::OnClose(connection_hdl hdl)
     Json::Value jreturn;
     jreturn[kSignal] = kSignOut;
     jreturn[kID] = p.id;
-    std::cout <<"--disconnect:"<<p.id<<" "<< p.name<<"\n";
+    BOOST_LOG_TRIVIAL(info) <<"--disconnect:"<<p.id<<" "<< p.name;
     m_map_peers.erase(hdl);
     this->Broadcast(jreturn.toStyledString());
     PrintPeers();
@@ -63,11 +65,10 @@ void SignalServer::PrintPeers()
 {
   char same1 = '+';
   char same2 = '+';
-  char tbuffer[128];
-  auto t = std::time(nullptr);
-  std::strftime(tbuffer,sizeof(tbuffer),"%Y/%m/%d %H:%M:%S\n",
-          std::localtime(&t));
-  std::cout << "------------------"<<tbuffer;
+
+  BOOST_LOG_TRIVIAL(info) <<"┌──────┬────────────────────────────────────────┐";
+  BOOST_LOG_TRIVIAL(info) <<"│ id   │ name                                   │";
+  BOOST_LOG_TRIVIAL(info) <<"├──────┼────────────────────────────────────────┤";
   for (auto p : m_map_peers)
   {
     bool have = true;
@@ -77,12 +78,14 @@ void SignalServer::PrintPeers()
       same1 = '-';
     }
 
-    std::cout << p.second.id << ":" << p.second.name << " "<<(have?"+":"-")<< std::endl;
+    BOOST_LOG_TRIVIAL(info) <<std::left << "│" <<std::setw(6)<<p.second.id << "│"
+    <<std::setw(38)<< p.second.name << " "<<(have?"+":"-")<< "│";
   }
   if (m_connections.size() != m_map_peers.size())
     same2 = '-';
-  std::cout << "------------------------- "<<same2<<same1<<"\n\n";
-  std::cout.flush();
+  BOOST_LOG_TRIVIAL(info) <<"└──────┴────────────────────────────────────────┘";
+  BOOST_LOG_TRIVIAL(info) <<same2<<same1<<"\n";
+  boost::log::core::get()->flush();
 }
 
 void SignalServer::Broadcast(const std::string& text)
@@ -134,7 +137,7 @@ void SignalServer::ProcessSignIn(connection_hdl hdl, Json::Value& value)
      this->Send(jreturn.toStyledString(), hdl);
 
      //printf("--sign in:%d %s\n", p.id,p.name.data());
-     std::cout << "--sign in:" << p.id<<" "<<p.name<<"\n";
+     BOOST_LOG_TRIVIAL(info) << "--sign in:" << p.id<<" "<<p.name;
      PrintPeers();
 }
 
@@ -158,7 +161,7 @@ void SignalServer::ProcessSignOut(connection_hdl hdl, Json::Value& value)
 
   this->Broadcast(jreturn.toStyledString());
 //  printf("--sign out:%d\n", id);
-  std::cout << "--sign out:"<<id<<"\n";
+  BOOST_LOG_TRIVIAL(info) << "--sign out:"<<id;
   PrintPeers();
 }
 
@@ -175,6 +178,7 @@ void SignalServer::ProcessMessage(connection_hdl hdl, Json::Value& value)
 bool SignalServer::IsExist(int id)
 {
   std::lock_guard<std::mutex> lock(m_mutex_peers);
+
   for (auto& p : m_map_peers)
   {
     if (p.second.id == id)

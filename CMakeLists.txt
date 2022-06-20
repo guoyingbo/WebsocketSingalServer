@@ -1,14 +1,27 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required(VERSION 2.8)
 
 project(wsSignalServer)
 
-# 并将名称保存到 DIR_SRCS 变量
+
 aux_source_directory(. DIR_SRCS)
 include_directories(./jsoncpp/include)
 add_subdirectory(jsoncpp)
 
-# 指定生成目标
+add_executable(wsSignalServer ${DIR_SRCS} message_queue.cpp message_queue.h)
 
-add_executable(wsSignalServer ${DIR_SRCS})
+find_package(Boost 1.72 REQUIRED COMPONENTS log_setup log)
 
-target_link_libraries(wsSignalServer jsoncpp pthread)
+target_link_libraries(wsSignalServer jsoncpp pthread rt ${Boost_LIBRARIES}	)
+
+set(CMAKE_INSTALL_PREFIX /usr)
+install(FILES "${CMAKE_SOURCE_DIR}/wsSignalServer.service"
+		DESTINATION /lib/systemd/system)
+
+#systemctl daemon-reload
+#systemctl eanble wsSignalServer.service
+#systemctl start wsSignalServer.service
+#systemctl status wsSignalServer.service
+#systemctl stop wsSignalServer.service
+
+install(TARGETS wsSignalServer
+		RUNTIME DESTINATION bin)

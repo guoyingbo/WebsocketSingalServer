@@ -8,7 +8,7 @@
 #include <set>
 
 #include <websocketpp/common/thread.hpp>
-
+#include "message_queue.h"
 
 
 using websocketpp::connection_hdl;
@@ -30,9 +30,31 @@ using websocketpp::lib::condition_variable;
 enum action_type {
   SUBSCRIBE,
   UNSUBSCRIBE,
-  MESSAGE
+  MESSAGE,
+  EXIT
 };
 
+class condition_mutex {
+public:
+  bool wait(int time) {
+    std::unique_lock<std::mutex> lock(lock_);
+    ready_ = false;
+    return cv_.wait_for(lock, std::chrono::milliseconds(time), [&] {return ready_; });
+  }
+  void notify(int reason = 0) {
+    std::lock_guard<std::mutex> lk(lock_);
+    ready_ = true;
+    reason_ = reason;
+    cv_.notify_all();
+  }
+  bool ready() const { return ready_; }
+  int notify_reason() const { return reason_; }
+protected:
+  int reason_ = 0;
+  std::condition_variable cv_;
+  std::mutex lock_;
+  bool ready_ = false;
+};
 
 
 class WebsocketServer {
@@ -70,19 +92,25 @@ protected:
 
   void on_pong_timeout(connection_hdl hdl, std::string s);
 
-  [[noreturn]] void process_messages();
+  void process_messages();
 
-  [[noreturn]] void loop_ping();
+  void loop_ping();
+
+  void wait_exit_message();
+
   server m_server;
 
 protected:
   typedef std::set<connection_hdl, std::owner_less<connection_hdl> > con_list;
 
- 
+  bool m_exit_signal;
   con_list m_connections;
   std::queue<action> m_actions;
 
   mutex m_action_lock;
   mutex m_connection_lock;
   condition_variable m_action_cond;
+
+  condition_mutex m_mutex_exit;
+  MessageQueue m_message_queue;
 };

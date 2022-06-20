@@ -4,6 +4,70 @@
 #include <iostream>
 #include <fstream>
 #include "signal_server.h"
+#include "message_queue.h"
+#include <boost/log/core.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/exceptions.hpp>
+#include <boost/log/expressions.hpp>
+#include <boost/log/sinks/text_file_backend.hpp>
+#include <boost/log/utility/setup/file.hpp>
+#include <boost/log/utility/setup/console.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
+#include <boost/log/sources/severity_channel_logger.hpp>
+#include <boost/log/sources/record_ostream.hpp>
+#include <boost/log/support/date_time.hpp>
+
+#define DAEMON "daemon"
+#define STOP "stop"
+#define START "start"
+#define SERVICE "service"
+
+#define LOG_CONSOLE 0
+#define LOG_FILE_USER 1
+#define LOG_FILE_SERVICE 2
+
+void init_log(int type)
+{
+  namespace keyword = boost::log::keywords;
+  namespace sinks = boost::log::sinks;
+  namespace expr = boost::log::expressions;
+  if (type == LOG_CONSOLE) {
+    boost::log::add_console_log(
+            std::clog,
+            keyword::format =
+                    (
+                            expr::stream
+                                    << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "[%m/%d %H:%M:%S]")
+                                    << "[" << boost::log::trivial::severity
+                                    << "] " << expr::smessage
+                    )
+    );
+  }else {
+    char tbuffer[128];
+    auto t = std::time(nullptr);
+
+    std::strftime(tbuffer,sizeof(tbuffer),(type==LOG_FILE_USER)?"log/wsSignalServer_%Y%m%d.%H%M%S":
+    "/root/log/wsSignalServer_%Y%m%d.%H%M%S",
+                  std::localtime(&t));
+    boost::log::add_file_log(
+            keyword::file_name = strcat(tbuffer,"_%N.log"),
+            keyword::rotation_size = 10*1024*1024,
+            keyword::time_based_rotation = sinks::file::rotation_at_time_point(0,0,0),
+            keyword::format =
+                    (
+                            expr::stream
+                                    << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "[%m/%d %H:%M:%S]")
+                                    << "[" << boost::log::trivial::severity
+                                    << "] " << expr::smessage
+                    )
+    );
+  }
+  boost::log::core::get()->set_filter(
+          boost::log::trivial::severity >= boost::log::trivial::info
+  );
+  boost::log::add_common_attributes();
+}
+
 
 int listen(int port)
 {
@@ -12,40 +76,72 @@ int listen(int port)
   return 0;
 }
 
+class arg_option {
+public:
+  arg_option(int argc,char** argv){
+    for (int i = 0; i < argc; ++i) {
+      m_arg_list.emplace_back(argv[i]);
+    }
+  }
+
+  std::string get(const std::string& command,const char* def) {
+    for (int i = 0; i < m_arg_list.size(); i++) {
+      if (m_arg_list[i] == command && i+1 < m_arg_list.size()) {
+        return m_arg_list[i+1];
+      }
+    }
+    return def;
+  }
+
+private:
+  std::vector<std::string> m_arg_list;
+};
+
+
 int main(int argc,char* argv[])
 {
-  const std::string DAEMON = "daemon";
-  int port = 8888;
-  if (argc > 1)
-    port = atoi(argv[1]);
-  if (argc > 2 && argv[2] == DAEMON) {
+  arg_option opt(argc,argv);
+  int port = atoi(opt.get("-p","2000").data());
+
+  std::string command = opt.get("-c",START);
+
+  if (command == DAEMON) {
 #ifndef WIN32
     if (-1 == daemon(1, 1)) {
       std::cout << "daemon error\n";
       exit(-1);
     } else {
-      std::cout << "daemon process.cout->wsSignalServer.log\n";
-      std::ofstream of("wsSignalServer.log");
-      std::streambuf *sb = of.rdbuf();
-      std::cout.rdbuf(sb);
-      std::cerr.rdbuf(sb);
-
+      init_log(LOG_FILE_USER);
       return listen(port);
     };
 #else
+    init_log(false);
     return listen(port);
 #endif
+  }else if(command == START) {
+    init_log(LOG_CONSOLE);
+    BOOST_LOG_TRIVIAL(info) << "";
+    return listen(port);
+  }else if(command == STOP) {
+    MessageQueue queue(false);
+    queue.SendExitMessage();
+    return 0;
+  } else if(command == SERVICE){
+#ifndef WIN32
+    if (-1 == daemon(1, 1)) {
+      std::cout << "daemon error\n";
+      exit(-1);
+    } else {
+    init_log(LOG_FILE_SERVICE);
+
+    return listen(port);
+    }
+#else
+  return -1;
+#endif
+  } else {
+    return  1;
   }
-  return listen(port);
 }
 
-// 运行程序: Ctrl + F5 或调试 >“开始执行(不调试)”菜单
-// 调试程序: F5 或调试 >“开始调试”菜单
 
-// 入门使用技巧: 
-//   1. 使用解决方案资源管理器窗口添加/管理文件
-//   2. 使用团队资源管理器窗口连接到源代码管理
-//   3. 使用输出窗口查看生成输出和其他消息
-//   4. 使用错误列表窗口查看错误
-//   5. 转到“项目”>“添加新项”以创建新的代码文件，或转到“项目”>“添加现有项”以将现有代码文件添加到项目
-//   6. 将来，若要再次打开此项目，请转到“文件”>“打开”>“项目”并选择 .sln 文件

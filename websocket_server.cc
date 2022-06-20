@@ -1,8 +1,8 @@
 #include "websocket_server.h"
-
+#include <boost/log/trivial.hpp>
 #include <utility>
 
-WebsocketServer::WebsocketServer()
+WebsocketServer::WebsocketServer():m_exit_signal(false),m_message_queue(true)
 {
   // Initialize Asio Transport
   m_server.clear_access_channels(websocketpp::log::alevel::all);
@@ -13,7 +13,7 @@ WebsocketServer::WebsocketServer()
   m_server.set_open_handler(bind(&WebsocketServer::on_open, this, ::_1));
   m_server.set_close_handler(bind(&WebsocketServer::on_close, this, ::_1));
   m_server.set_message_handler(bind(&WebsocketServer::on_message, this, ::_1, ::_2));
-  m_server.set_pong_timeout(3000);
+  m_server.set_pong_timeout(5000);
   m_server.set_pong_timeout_handler(bind(&WebsocketServer::on_pong_timeout, this,::_1,::_2));
 }
 
@@ -26,11 +26,11 @@ void WebsocketServer::run(uint16_t port)
   m_server.start_accept();
   // Start the ASIO io_service run loop
   try {
-    std::cout << "server run at:" << port << "\n";
+    BOOST_LOG_TRIVIAL(info) << "server run at:" << port;
     m_server.run();
   }
   catch (const std::exception & e) {
-    std::cout << e.what() << std::endl;
+    BOOST_LOG_TRIVIAL(info) << e.what();
   }
 }
 
@@ -58,12 +58,12 @@ void WebsocketServer::on_message(connection_hdl hdl, server::message_ptr msg)
   {
     lock_guard<mutex> guard(m_action_lock);
     m_actions.push(action(MESSAGE, std::move(hdl), std::move(msg)));
- //   std::cout << "-->RECV:" << msg->get_payload() << "\n";
+ //   BOOST_LOG_TRIVIAL(info) << "-->RECV:" << msg->get_payload() << "\n";
   }
   m_action_cond.notify_one();
 }
 
-[[noreturn]] void WebsocketServer::process_messages()
+void WebsocketServer::process_messages()
 {
   while (true)
   {
@@ -98,10 +98,15 @@ void WebsocketServer::on_message(connection_hdl hdl, server::message_ptr msg)
       }
       OnReceive(a.hdl, a.msg->get_payload());
     }
-    else 
+    else if(a.type == EXIT)
     {
-      // undefined.
+      BOOST_LOG_TRIVIAL(info) << "message_process loop return";
+      return;
     }
+    else {
+      // undefined
+    }
+
   }
 }
 
@@ -112,17 +117,18 @@ void WebsocketServer::Listen(int port)
     // Start a thread to run the processing loop
     thread t1(bind(&WebsocketServer::process_messages, this));
     thread t2(bind(&WebsocketServer::loop_ping, this));
+    thread t3(bind(&WebsocketServer::wait_exit_message,this));
     // Run the asio loop with the main thread
     run(port);
-
+    t3.join();
     t2.join();
     t1.join();
-
+    BOOST_LOG_TRIVIAL(info) << "Exit.";
   }
   catch (websocketpp::exception const & e)
   {
-	  std::cout << "---main loop exit---\n";
-    std::cout << e.what() << std::endl;
+	  BOOST_LOG_TRIVIAL(info) << "---main loop exit---";
+    BOOST_LOG_TRIVIAL(info) << e.what();
   }
 }
 
@@ -134,7 +140,7 @@ bool WebsocketServer::Send(void * data, int len, connection_hdl hdl)
 	}
 	catch (std::exception& e)
 	{
-		std::cout << "send error:"<< e.what() << std::endl;
+		BOOST_LOG_TRIVIAL(info) << "send error:"<< e.what();
 	}
 	return false;
 }
@@ -144,12 +150,12 @@ bool WebsocketServer::Send(const std::string& text, connection_hdl hdl)
 	try
 	{
 		m_server.send(std::move(hdl), text, websocketpp::frame::opcode::TEXT);
- //   std::cout << "<--SEND:" << text << "\n";
+ //   BOOST_LOG_TRIVIAL(info) << "<--SEND:" << text << "\n";
 		return true;
 	}
 	catch (std::exception& e)
 	{
-		std::cout <<"send error:"<< e.what() << std::endl;
+		BOOST_LOG_TRIVIAL(info) <<"send error:"<< e.what();
 	}
 	return false;
 }
@@ -172,10 +178,13 @@ void WebsocketServer::Broadcast(void* data, int len)
   }
 }
 
-[[noreturn]] void WebsocketServer::loop_ping() {
+void WebsocketServer::loop_ping() {
   while (true)
   {
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    if (m_mutex_exit.wait(5000)){
+      BOOST_LOG_TRIVIAL(info) << "loop_ping exit.";
+      return;
+    }
     lock_guard<mutex> guard(m_connection_lock);
     for (const auto& hdl : m_connections)
     {
@@ -183,7 +192,7 @@ void WebsocketServer::Broadcast(void* data, int len)
       m_server.ping(hdl,"",er);
       if (er)
       {
-        std::cout << er.message() << std::endl;
+        BOOST_LOG_TRIVIAL(info) << er.message();
       }
     }
   }
@@ -193,6 +202,21 @@ void WebsocketServer::Broadcast(void* data, int len)
 void WebsocketServer::on_pong_timeout(connection_hdl hdl, std::string s) {
   std::error_code er;
   m_server.close(hdl,websocketpp::close::status::normal,"pong timeout",er);
-  std::cout << "pong timeout \n";
+  BOOST_LOG_TRIVIAL(info) << "pong timeout";
+}
+
+void WebsocketServer::wait_exit_message() {
+  if (m_message_queue.WaitExitMessage()){
+    BOOST_LOG_TRIVIAL(info) << "receive exit message";
+    m_mutex_exit.notify();
+    m_server.stop();
+    {
+      lock_guard<mutex> guard(m_action_lock);
+      m_actions.push(action(EXIT, connection_hdl()));
+    }
+    m_action_cond.notify_one();
+  } else {
+    BOOST_LOG_TRIVIAL(info) << "error wait_exit_message";
+  }
 }
 
