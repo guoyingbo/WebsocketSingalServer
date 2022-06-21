@@ -1,4 +1,4 @@
-﻿#include "signal_server.h"
+#include "signal_server.h"
 #include <map>
 #include <boost/log/trivial.hpp>
 #include <json/reader.h>
@@ -66,9 +66,10 @@ void SignalServer::PrintPeers()
   char same1 = '+';
   char same2 = '+';
 
-  BOOST_LOG_TRIVIAL(info) <<"┌──────┬────────────────────────────────────────┐";
-  BOOST_LOG_TRIVIAL(info) <<"│ id   │ name                                   │";
-  BOOST_LOG_TRIVIAL(info) <<"├──────┼────────────────────────────────────────┤";
+  std::stringstream ss_out;
+  ss_out <<"┌──────┬────────────────────────────────────────┐\n";
+  ss_out <<"│ id   │ name                                   │\n";
+  ss_out <<"├──────┼────────────────────────────────────────┤\n";
   for (auto p : m_map_peers)
   {
     bool have = true;
@@ -78,13 +79,13 @@ void SignalServer::PrintPeers()
       same1 = '-';
     }
 
-    BOOST_LOG_TRIVIAL(info) <<std::left << "│" <<std::setw(6)<<p.second.id << "│"
-    <<std::setw(38)<< p.second.name << " "<<(have?"+":"-")<< "│";
+    ss_out <<std::left << "│" <<std::setw(6)<<p.second.id << "│"
+    <<std::setw(38)<< p.second.name << " "<<(have?"+":"-")<< "│\n";
   }
   if (m_connections.size() != m_map_peers.size())
     same2 = '-';
-  BOOST_LOG_TRIVIAL(info) <<"└──────┴────────────────────────────────────────┘";
-  BOOST_LOG_TRIVIAL(info) <<same2<<same1<<"\n";
+  ss_out << "└──────┴────────────────────────────────────────┘\n";
+  BOOST_LOG_TRIVIAL(info) <<"peer list\n"<< ss_out.str() <<same2<<same1<<"\n";
   boost::log::core::get()->flush();
 }
 
@@ -155,6 +156,8 @@ void SignalServer::ProcessSignOut(connection_hdl hdl, Json::Value& value)
   jreturn["request"] = "sign_out";
   jreturn["status"] = "ok";
 
+  this->Send(jreturn.toStyledString(),hdl);
+
   jreturn.clear();
   jreturn[kSignal] = kSignOut;
   jreturn[kID] = id;
@@ -178,7 +181,6 @@ void SignalServer::ProcessMessage(connection_hdl hdl, Json::Value& value)
 bool SignalServer::IsExist(int id)
 {
   std::lock_guard<std::mutex> lock(m_mutex_peers);
-
   for (auto& p : m_map_peers)
   {
     if (p.second.id == id)

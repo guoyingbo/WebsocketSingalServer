@@ -35,7 +35,7 @@ MessageQueue::MessageQueue(bool create): create_(create),pack_(new message_queue
     }
   } catch (interprocess_exception& ie) {
     mq_ = nullptr;
-    BOOST_LOG_TRIVIAL(info) << "MessageQueue constructor " << ie.what();
+    BOOST_LOG_TRIVIAL(info) << "MessageQueue()" << ie.what();
   }
 
 }

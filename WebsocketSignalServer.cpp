@@ -22,11 +22,18 @@
 #define START "start"
 #define SERVICE "service"
 
+#define FILTER_DEBUG "debug"
+#define FILTER_INFO "info"
+#define FILTER_WARNING "warning"
+#define FILTER_ERROR "error"
+#define FILTER_FATAL "fatal"
+
+
 #define LOG_CONSOLE 0
 #define LOG_FILE_USER 1
 #define LOG_FILE_SERVICE 2
 
-void init_log(int type)
+void init_log(int type,int filter)
 {
   namespace keyword = boost::log::keywords;
   namespace sinks = boost::log::sinks;
@@ -42,6 +49,7 @@ void init_log(int type)
                                     << "] " << expr::smessage
                     )
     );
+
   }else {
     char tbuffer[128];
     auto t = std::time(nullptr);
@@ -61,9 +69,11 @@ void init_log(int type)
                                     << "] " << expr::smessage
                     )
     );
+
   }
+
   boost::log::core::get()->set_filter(
-          boost::log::trivial::severity >= boost::log::trivial::info
+          boost::log::trivial::severity >= filter
   );
   boost::log::add_common_attributes();
 }
@@ -104,6 +114,19 @@ int main(int argc,char* argv[])
   int port = atoi(opt.get("-p","2000").data());
 
   std::string command = opt.get("-c",START);
+  std::string filter_string = opt.get("-f",FILTER_INFO);
+
+  boost::log::trivial::severity_level filter = boost::log::trivial::info;
+  if (filter_string == FILTER_DEBUG)
+    filter = boost::log::trivial::debug;
+  else if(filter_string == FILTER_INFO)
+    filter = boost::log::trivial::info;
+  else if(filter_string == FILTER_WARNING)
+    filter = boost::log::trivial::warning;
+  else if(filter_string == FILTER_ERROR)
+    filter = boost::log::trivial::error;
+  else if(filter_string == FILTER_FATAL)
+    filter = boost::log::trivial::fatal;
 
   if (command == DAEMON) {
 #ifndef WIN32
@@ -111,7 +134,7 @@ int main(int argc,char* argv[])
       std::cout << "daemon error\n";
       exit(-1);
     } else {
-      init_log(LOG_FILE_USER);
+      init_log(LOG_FILE_USER,filter);
       return listen(port);
     };
 #else
@@ -119,7 +142,7 @@ int main(int argc,char* argv[])
     return listen(port);
 #endif
   }else if(command == START) {
-    init_log(LOG_CONSOLE);
+    init_log(LOG_CONSOLE,filter);
     BOOST_LOG_TRIVIAL(info) << "";
     return listen(port);
   }else if(command == STOP) {
@@ -132,7 +155,7 @@ int main(int argc,char* argv[])
       std::cout << "daemon error\n";
       exit(-1);
     } else {
-    init_log(LOG_FILE_SERVICE);
+    init_log(LOG_FILE_SERVICE,filter);
 
     return listen(port);
     }

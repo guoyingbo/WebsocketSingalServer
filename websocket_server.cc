@@ -58,7 +58,6 @@ void WebsocketServer::on_message(connection_hdl hdl, server::message_ptr msg)
   {
     lock_guard<mutex> guard(m_action_lock);
     m_actions.push(action(MESSAGE, std::move(hdl), std::move(msg)));
- //   BOOST_LOG_TRIVIAL(info) << "-->RECV:" << msg->get_payload() << "\n";
   }
   m_action_cond.notify_one();
 }
@@ -94,9 +93,10 @@ void WebsocketServer::process_messages()
       lock_guard<mutex> guard(m_connection_lock);
       if (a.msg->get_opcode() == websocketpp::frame::opcode::text)
       {
-
+        BOOST_LOG_TRIVIAL(debug) << "-->RECV:\n" << a.msg->get_payload();
+        OnReceive(a.hdl, a.msg->get_payload());
       }
-      OnReceive(a.hdl, a.msg->get_payload());
+
     }
     else if(a.type == EXIT)
     {
@@ -127,8 +127,7 @@ void WebsocketServer::Listen(int port)
   }
   catch (websocketpp::exception const & e)
   {
-	  BOOST_LOG_TRIVIAL(info) << "---main loop exit---";
-    BOOST_LOG_TRIVIAL(info) << e.what();
+	  BOOST_LOG_TRIVIAL(error) << "---main loop exit---" << e.what();
   }
 }
 
@@ -140,7 +139,7 @@ bool WebsocketServer::Send(void * data, int len, connection_hdl hdl)
 	}
 	catch (std::exception& e)
 	{
-		BOOST_LOG_TRIVIAL(info) << "send error:"<< e.what();
+		BOOST_LOG_TRIVIAL(error) << "send error:"<< e.what();
 	}
 	return false;
 }
@@ -150,12 +149,12 @@ bool WebsocketServer::Send(const std::string& text, connection_hdl hdl)
 	try
 	{
 		m_server.send(std::move(hdl), text, websocketpp::frame::opcode::TEXT);
- //   BOOST_LOG_TRIVIAL(info) << "<--SEND:" << text << "\n";
+    BOOST_LOG_TRIVIAL(debug) << "<--SEND:\n" << text << "\n";
 		return true;
 	}
 	catch (std::exception& e)
 	{
-		BOOST_LOG_TRIVIAL(info) <<"send error:"<< e.what();
+		BOOST_LOG_TRIVIAL(error) <<"send error:"<< e.what();
 	}
 	return false;
 }
@@ -192,7 +191,7 @@ void WebsocketServer::loop_ping() {
       m_server.ping(hdl,"",er);
       if (er)
       {
-        BOOST_LOG_TRIVIAL(info) << er.message();
+        BOOST_LOG_TRIVIAL(error) << er.message();
       }
     }
   }
@@ -216,7 +215,7 @@ void WebsocketServer::wait_exit_message() {
     }
     m_action_cond.notify_one();
   } else {
-    BOOST_LOG_TRIVIAL(info) << "error wait_exit_message";
+    BOOST_LOG_TRIVIAL(error) << "error wait_exit_message";
   }
 }
 
