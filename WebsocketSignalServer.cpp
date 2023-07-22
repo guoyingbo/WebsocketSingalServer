@@ -18,6 +18,7 @@
 #include <boost/log/support/date_time.hpp>
 
 #include "json/json.h"
+#include <thread>
 
 #define DAEMON "daemon"
 #define STOP "stop"
@@ -35,43 +36,39 @@
 #define LOG_FILE_USER 1
 #define LOG_FILE_SERVICE 2
 
+extern int start_ssl();
+
 void init_log(int type,int filter)
 {
   namespace keyword = boost::log::keywords;
   namespace sinks = boost::log::sinks;
   namespace expr = boost::log::expressions;
-  if (type == LOG_CONSOLE) {
+  if (type == LOG_CONSOLE)
+  {
     boost::log::add_console_log(
-            std::clog,
-            keyword::format =
-                    (
-                            expr::stream
-                                    << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "[%m/%d %H:%M:%S]")
-                                    << "[" << boost::log::trivial::severity
-                                    << "] " << expr::smessage
-                    )
-    );
-
-  }else {
+        std::clog,
+        keyword::format =
+            (expr::stream
+             << expr::format_date_time<boost::posix_time::ptime>("TimeStamp", "[%m/%d %H:%M:%S]")
+             << "[" << boost::log::trivial::severity
+             << "] " << expr::smessage));
+  }
+  else
+  {
     char tbuffer[128];
     auto t = std::time(nullptr);
 
-    std::strftime(tbuffer,sizeof(tbuffer),(type==LOG_FILE_USER)?"log/wsSignalServer_%Y%m%d.%H%M%S":
-    "/root/log/wsSignalServer_%Y%m%d.%H%M%S",
+    std::strftime(tbuffer, sizeof(tbuffer), (type == LOG_FILE_USER) ? "log/wsSignalServer_%Y%m%d.%H%M%S" : "/root/log/wsSignalServer_%Y%m%d.%H%M%S",
                   std::localtime(&t));
     boost::log::add_file_log(
-            keyword::file_name = strcat(tbuffer,"_%N.log"),
-            keyword::rotation_size = 10*1024*1024,
-            keyword::time_based_rotation = sinks::file::rotation_at_time_point(0,0,0),
-            keyword::format =
-                    (
-                            expr::stream
-                                    << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "[%m/%d %H:%M:%S]")
-                                    << "[" << boost::log::trivial::severity
-                                    << "] " << expr::smessage
-                    )
-    );
-
+        keyword::file_name = strcat(tbuffer, "_%N.log"),
+        keyword::rotation_size = 10 * 1024 * 1024,
+        keyword::time_based_rotation = sinks::file::rotation_at_time_point(0, 0, 0),
+        keyword::format =
+            (expr::stream
+             << expr::format_date_time<boost::posix_time::ptime>("TimeStamp", "[%m/%d %H:%M:%S]")
+             << "[" << boost::log::trivial::severity
+             << "] " << expr::smessage));
   }
 
   boost::log::core::get()->set_filter(
@@ -112,6 +109,8 @@ private:
 
 int main(int argc,char* argv[])
 {
+  std::thread runable([]()
+                      { start_ssl(); });
   arg_option opt(argc,argv);
   int port = atoi(opt.get("-p","2000").data());
 
