@@ -13,7 +13,7 @@ WebsocketServer::WebsocketServer():m_exit_signal(false),m_message_queue(true)
   m_server.set_open_handler(bind(&WebsocketServer::on_open, this, ::_1));
   m_server.set_close_handler(bind(&WebsocketServer::on_close, this, ::_1));
   m_server.set_message_handler(bind(&WebsocketServer::on_message, this, ::_1, ::_2));
-  m_server.set_pong_timeout(5000);
+  m_server.set_pong_timeout(15000);
   m_server.set_pong_timeout_handler(bind(&WebsocketServer::on_pong_timeout, this,::_1,::_2));
 }
 
@@ -201,7 +201,7 @@ void WebsocketServer::loop_ping() {
 void WebsocketServer::on_pong_timeout(connection_hdl hdl, std::string s) {
   std::error_code er;
   m_server.close(hdl,websocketpp::close::status::normal,"pong timeout",er);
-  BOOST_LOG_TRIVIAL(info) << "pong timeout";
+  BOOST_LOG_TRIVIAL(info) << "pong timeout " << er.message();
 }
 
 void WebsocketServer::wait_exit_message() {
