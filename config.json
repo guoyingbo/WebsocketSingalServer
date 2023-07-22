@@ -1,0 +1,6 @@
+{
+	"comand":"start",
+	"port":2000,
+	"log_filter":"info",
+	"ice_server":"turn:115.231.220.242:8101?transport=tcp [ts1:12345678]"
+}
