@@ -15,7 +15,7 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "make"
+            "preLaunchTask": "Build"
         }
 
     ]
