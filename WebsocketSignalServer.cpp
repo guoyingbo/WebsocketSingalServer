@@ -81,7 +81,7 @@ void init_log(int type,int filter)
 int listen(int port)
 {
   SignalServer server;
-  server.Listen(port);
+  server.Listen(port,9002);
   return 0;
 }
 
@@ -109,8 +109,6 @@ private:
 
 int main(int argc,char* argv[])
 {
-  std::thread runable([]()
-                      { start_ssl(); });
   arg_option opt(argc,argv);
   int port = atoi(opt.get("-p","2000").data());
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/config/asio.hpp>
 
 #include <websocketpp/server.hpp>
 
@@ -29,6 +29,7 @@ using websocketpp::lib::condition_variable;
 
 enum action_type {
   SUBSCRIBE,
+  TLS_SUBSCRIBE,
   UNSUBSCRIBE,
   MESSAGE,
   EXIT
@@ -56,23 +57,23 @@ protected:
   bool ready_ = false;
 };
 
-
+typedef websocketpp::server<websocketpp::config::asio> server_plain;
+typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
 class WebsocketServer {
 public:
-  
-  typedef websocketpp::server<websocketpp::config::asio> server;
-  
+  typedef server_plain::message_ptr message_ptr;
+
   struct action {
   action(action_type t, connection_hdl h) : type(t), hdl(h) {}
-  action(action_type t, connection_hdl h, server::message_ptr m)
+  action(action_type t, connection_hdl h, message_ptr m)
     : type(t), hdl(h), msg(m) {}
 
   action_type type;
   websocketpp::connection_hdl hdl;
-  server::message_ptr msg;
+  message_ptr msg;
 };
   WebsocketServer();
-  void Listen(int port);
+  void Listen(int port,int port_tls=0);
 
   bool Send(void* data, int len,connection_hdl hdl);
   bool Send(const std::string& text,connection_hdl hdl);
@@ -82,13 +83,14 @@ public:
   virtual void OnReceive(connection_hdl hdl, const std::string& message) = 0;
   virtual void OnClose(connection_hdl) = 0;
 protected:
-  void run(uint16_t port);
+  void run(uint16_t port,uint16_t port_tls);
 
   void on_open(connection_hdl hdl);
+  void on_open_tls(connection_hdl hdl);
 
   void on_close(connection_hdl hdl);
 
-  void on_message(connection_hdl hdl, server::message_ptr msg);
+  void on_message(connection_hdl hdl, server_plain::message_ptr msg);
 
   void on_pong_timeout(connection_hdl hdl, std::string s);
 
@@ -98,13 +100,15 @@ protected:
 
   void wait_exit_message();
 
-  server m_server;
+  server_plain m_server_plain;
+  server_tls m_server_tls;
 
 protected:
   typedef std::set<connection_hdl, std::owner_less<connection_hdl> > con_list;
 
   bool m_exit_signal;
-  con_list m_connections;
+  con_list m_con_list_plain;
+  con_list m_con_list_tls;
   std::queue<action> m_actions;
 
   mutex m_action_lock;
@@ -113,4 +117,5 @@ protected:
 
   condition_mutex m_mutex_exit;
   MessageQueue m_message_queue;
+  boost::asio::io_service m_ios;
 };

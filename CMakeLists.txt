@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 
 project(wsSignalServer)
 
@@ -24,12 +24,6 @@ target_link_libraries(wsSignalServer jsoncpp pthread  ${Boost_LIBRARIES} ${LIB_S
 set(CMAKE_INSTALL_PREFIX /usr)
 install(FILES "${CMAKE_SOURCE_DIR}/wsSignalServer.service"
 		DESTINATION /lib/systemd/system)
-
-#systemctl daemon-reload
-#systemctl eanble wsSignalServer.service
-#systemctl start wsSignalServer.service
-#systemctl status wsSignalServer.service
-#systemctl stop wsSignalServer.service
 
 install(TARGETS wsSignalServer
 		RUNTIME DESTINATION bin)

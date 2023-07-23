@@ -106,8 +106,6 @@ int SignalServer::NextID()
 
 void SignalServer::PrintPeers()
 {
-  char same1 = '+';
-  char same2 = '+';
 
   bool bShortSegment = true;
   std::streamsize sz1 = 5;
@@ -142,18 +140,10 @@ void SignalServer::PrintPeers()
 
   for (auto p: map_sort_peers)
   {
-    bool have = true;
-    if (!m_connections.count(p.second.hdl))
-    {
-      have = false;
-      same1 = '-';
-    }
     ss_out << std::left << "│ " << std::setw(sz1) << p.second.id << "│ "
-      << std::setw(sz2) << p.second.name << " " << (have ? "+" : "-") << "│\n";
+      << std::setw(sz2) << p.second.name << "  "<< "│\n";
   }
 
-  if (m_connections.size() != m_map_peers.size())
-    same2 = '-';
   if (bShortSegment)
   {
     ss_out << "└──────┴──────────────────────────────────────────────┘\n";
@@ -161,7 +151,7 @@ void SignalServer::PrintPeers()
   else
     ss_out <<"└───┴────────────────────────┘\n";
 
-  BOOST_LOG_TRIVIAL(info) <<"peer list\n"<< ss_out.str() << same2<<same1<<"\n";
+  BOOST_LOG_TRIVIAL(info) <<"peer list\n"<< ss_out.str() <<"  \n";
   boost::log::core::get()->flush();
 }
 
